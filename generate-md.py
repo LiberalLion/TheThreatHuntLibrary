@@ -12,6 +12,7 @@ The following files are updated by this script, and should not be altered manual
 * docs/data/hunts.json
 
 """
+
 import pandas as pd
 import json
 import glob
@@ -59,10 +60,10 @@ for hunt in hunts:
     # Generate the markdown
     markdown = hunt_template.render(hunt=hunt_for_render, tactics=tactics, techniques=techniques, tests=tests)
     # Write to md file
-    with open('docs/hunts/{}-{}.md'.format(hunt['id'],hunt['title']), 'w+') as f:
+    with open(f"docs/hunts/{hunt['id']}-{hunt['title']}.md", 'w+') as f:
         f.write(markdown)
         f.close()
-    print("Generated hunt file - {}-{}.md".format(hunt['id'],hunt['title']))
+    print(f"Generated hunt file - {hunt['id']}-{hunt['title']}.md")
 
 # Generate the index.md file
 index_content = """
@@ -83,23 +84,20 @@ subtechnique_table = """---
 
 # Build the first (date-based) table
 table_techniques = []
+implementations = ""
 for hunt in sorted(hunts, key = lambda k: k['id']):
     coverage = ""
-    implementations = ""
     if 'attack_coverage' in hunt and len(hunt['attack_coverage']) > 0:
         coverage += "<ul style='margin-bottom: 0;'>"
         for cov in hunt['attack_coverage']:
-          coverage += "<li><a href=\"https://attack.mitre.org/techniques/{}/\">{}</a></li>".format(cov['technique'], cov['technique'] + "-" + techniques[cov['technique']]) 
-          # Get all of the techniques seen in all hunts
-          # This is for building the second (subtechniques based) table
-          if cov['technique'] not in table_techniques:
-              table_techniques.append(cov['technique'])
-        coverage += "</ul>" 
-    if 'platform' in hunt:
-        applicable_platforms = hunt['platform']
-    else:
-        applicable_platforms = "N/A"
-    index_content += "|<a href=\"hunts/{}-{}.md\">{}-{}</a>|{}|{}|{}|\n".format(hunt['id'], hunt['title'], hunt['id'],hunt['title'], coverage, applicable_platforms, hunt['creation_date'])
+            coverage += f"""<li><a href=\"https://attack.mitre.org/techniques/{cov['technique']}/\">{cov['technique'] + "-" + techniques[cov['technique']]}</a></li>"""
+            # Get all of the techniques seen in all hunts
+            # This is for building the second (subtechniques based) table
+            if cov['technique'] not in table_techniques:
+                table_techniques.append(cov['technique'])
+        coverage += "</ul>"
+    applicable_platforms = hunt['platform'] if 'platform' in hunt else "N/A"
+    index_content += f"""|<a href=\"hunts/{hunt['id']}-{hunt['title']}.md\">{hunt['id']}-{hunt['title']}</a>|{coverage}|{applicable_platforms}|{hunt['creation_date']}|\n"""
 
 # Build the second (subtechnique-based) table
 #print(table_techniques)
@@ -126,41 +124,47 @@ for tid in table_techniques:
     if none_bucket:
         none_str += "<ul style='margin-bottom: 0;'>"
         for hunt in sorted(none_bucket, key = lambda k: k['id']):
-            none_str += "<li><a href=\"hunts/{}-{}.md\">{}-{}</a></li>".format(hunt['id'],hunt['title'], hunt['id'], hunt['title'])
+            none_str += f"""<li><a href=\"hunts/{hunt['id']}-{hunt['title']}.md\">{hunt['id']}-{hunt['title']}</a></li>"""
         none_str += "</ul>"
         none_sub_str = "(N/A - technique only)"
     else:
         none_str = "(N/A - see below)"
     if len(sub_bucket.keys()) > 1:
-      subtechnique_table += "|[{}-{}](https://attack.mitre.org/techniques/{}/)|{}|{}|\n".format(tid,techniques[tid],tid,none_sub_str,none_str)
+        subtechnique_table += f"|[{tid}-{techniques[tid]}](https://attack.mitre.org/techniques/{tid}/)|{none_sub_str}|{none_str}|\n"
     # Write the subtechniques to the table
     if sub_bucket:
         for sub_tid, car_list in sub_bucket.items():
             sub_str = "<ul style='margin-bottom: 0;'>"
             for hunt in sorted(car_list, key = lambda k: k['id']):
-                sub_str += "<li><a href=\"hunts/{}-{}.md\">{}-{}</a></li>".format(hunt['id'],hunt['title'], hunt['id'], hunt['title'])
+                sub_str += f"""<li><a href=\"hunts/{hunt['id']}-{hunt['title']}.md\">{hunt['id']}-{hunt['title']}</a></li>"""
             sub_str += "</ul>"
             # Write the sub-technique entry to the table
             # Corner case where there is only one sub-technique and no technique-only analytics
             if not none_bucket and len(sub_bucket.keys()) == 1:
-              subtechnique_table += "|[{}-{}](https://attack.mitre.org/techniques/{}/)|[{}-{}](https://attack.mitre.org/techniques/{}/{}/)|{}|\n".format(tid,techniques[tid],tid,sub_tid,techniques[sub_tid],sub_tid.split(".")[0],sub_tid.split(".")[1],sub_str)
+                subtechnique_table += f'|[{tid}-{techniques[tid]}](https://attack.mitre.org/techniques/{tid}/)|[{sub_tid}-{techniques[sub_tid]}](https://attack.mitre.org/techniques/{sub_tid.split(".")[0]}/{sub_tid.split(".")[1]}/)|{sub_str}|\n'
             else:
-              subtechnique_table += "|...|[{}-{}](https://attack.mitre.org/techniques/{}/{}/)|{}|\n".format(sub_tid,techniques[sub_tid],sub_tid.split(".")[0],sub_tid.split(".")[1],sub_str)
+                subtechnique_table += f'|...|[{sub_tid}-{techniques[sub_tid]}](https://attack.mitre.org/techniques/{sub_tid.split(".")[0]}/{sub_tid.split(".")[1]}/)|{sub_str}|\n'
 
-# Write the tables
-index_file = open('docs/index.md', 'w')
-index_file.write(index_content)
-index_file.write("\n")
-index_file.write(subtechnique_table)
-index_file.close()
-
+with open('docs/index.md', 'w') as index_file:
+    index_file.write(index_content)
+    index_file.write("\n")
+    index_file.write(subtechnique_table)
 # Generate analytics.json
 huntdata = [
     {
         'shortName': hunt['title'],
         'name': hunt['id'],
-        'attack': [{'tactics': [tactics[t] for t in coverage['tactics']], 'technique': 'Technique/{}'.format(coverage['technique'])} for coverage in hunt['attack_coverage']] if 'attack_coverage' in hunt else []
-    } for hunt in hunts
+        'attack': [
+            {
+                'tactics': [tactics[t] for t in coverage['tactics']],
+                'technique': f"Technique/{coverage['technique']}",
+            }
+            for coverage in hunt['attack_coverage']
+        ]
+        if 'attack_coverage' in hunt
+        else [],
+    }
+    for hunt in hunts
 ]
 makedirs('docs/data/', exist_ok=True)
 open('docs/data/hunts.json', 'w').write(json.dumps({'hunts': huntdata}))
